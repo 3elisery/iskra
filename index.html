@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>Искра</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;1,9..144,500&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#14121a;
+    --ink-2:#1c1826;
+    --plum:#2c1b3e;
+    --ember:#ff7a3d;
+    --gold:#ffd166;
+    --cream:#f5f0e8;
+    --cream-dim:#f5f0e899;
+    --line:#ffffff22;
+    --card-ink:#5c2438;
+    --card-ink-dim:#a56d81;
+    --card-accent:#d6336c;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--ink);
+    color:var(--cream);
+    font-family:'JetBrains Mono', monospace;
+    overflow:hidden;
+    position:relative;
+    touch-action:none;
+  }
+
+  /* grain */
+  body::before{
+    content:"";
+    position:fixed; inset:0;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+    pointer-events:none;
+    z-index:50;
+    mix-blend-mode:overlay;
+  }
+
+  .app{
+    height:100dvh;
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:max(18px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom));
+    position:relative;
+  }
+
+  .top{
+    width:100%;
+    max-width:440px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:4px 4px 14px;
+  }
+  .brand{
+    display:flex; align-items:center; gap:8px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--cream-dim);
+  }
+  .spark-icon{
+    width:14px; height:14px;
+    animation:flicker 2.6s ease-in-out infinite;
+  }
+  @keyframes flicker{
+    0%,100%{opacity:1; transform:scale(1) rotate(0deg);}
+    45%{opacity:.6; transform:scale(.85) rotate(-4deg);}
+    55%{opacity:1; transform:scale(1.08) rotate(3deg);}
+  }
+  .iconbtn{
+    background:none; border:none; color:var(--cream-dim);
+    width:34px; height:34px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+  }
+  .iconbtn:active{background:#ffffff14;}
+  .iconbtn svg{width:18px; height:18px;}
+
+  .deck-wrap{
+    flex:1;
+    width:100%;
+    max-width:440px;
+    position:relative;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .card{
+    position:absolute;
+    inset:0;
+    border-radius:22px;
+    padding:34px 28px;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    box-shadow:0 30px 60px -20px #00000080, 0 2px 0 #ffffff14 inset;
+    border:1px solid var(--line);
+    user-select:none;
+    cursor:grab;
+    will-change:transform;
+  }
+  .card:active{cursor:grabbing;}
+
+  .card-back{ filter:brightness(.7) saturate(.7); transform:scale(.93) translateY(14px); }
+  .card-back2{ filter:brightness(.45) saturate(.5); transform:scale(.86) translateY(26px); opacity:.6;}
+
+  .tag{
+    font-size:11px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--card-accent);
+    opacity:.85;
+  }
+
+  .quote-text{
+    font-family:'Fraunces', serif;
+    font-weight:500;
+    font-style:italic;
+    font-size:clamp(22px, 6vw, 30px);
+    line-height:1.32;
+    color:var(--card-ink);
+  }
+
+  .quote-foot{
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    gap:6px;
+  }
+  .author{
+    font-size:12px;
+    color:var(--card-ink-dim);
+    letter-spacing:.02em;
+  }
+  .author::before{content:"— ";}
+
+  .foot-actions{ display:flex; align-items:center; }
+
+  .favbtn{
+    background:none;border:none;cursor:pointer;
+    width:38px;height:38px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .favbtn svg{width:20px;height:20px; stroke:var(--card-ink-dim); fill:none; transition:.15s;}
+  .favbtn.active svg{ fill:var(--card-accent); stroke:var(--card-accent);}
+
+  .delbtn svg{ stroke:#b5495f; opacity:.55; transition:.15s; }
+  .delbtn.confirm{ animation:delpulse .55s ease infinite alternate; }
+  .delbtn.confirm svg{ opacity:1; stroke:#e0173d; }
+  @keyframes delpulse{ from{transform:scale(1);} to{transform:scale(1.15);} }
+
+  .hint{
+    text-align:center;
+    font-size:11px;
+    color:var(--cream-dim);
+    letter-spacing:.08em;
+    padding:14px 0 6px;
+  }
+
+  .dots{
+    display:flex; gap:6px; padding:10px 0 4px;
+  }
+  .dot{width:5px;height:5px;border-radius:50%;background:#ffffff30;}
+  .dot.on{background:var(--gold); width:16px; border-radius:3px;}
+
+  .controls{
+    width:100%; max-width:440px;
+    display:flex; gap:10px; padding-top:8px;
+  }
+  .ctrl{
+    flex:1;
+    background:var(--ink-2);
+    border:1px solid var(--line);
+    color:var(--cream);
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    padding:13px 10px;
+    border-radius:12px;
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    cursor:pointer;
+  }
+  .ctrl:active{background:#ffffff10;}
+  .ctrl svg{width:14px;height:14px;}
+
+  /* sheet (add / favorites) */
+  .sheet-overlay{
+    position:fixed; inset:0; background:#00000090;
+    z-index:80; opacity:0; pointer-events:none; transition:opacity .2s;
+  }
+  .sheet-overlay.open{opacity:1; pointer-events:auto;}
+  .sheet{
+    position:fixed; left:0; right:0; bottom:0;
+    background:var(--ink-2);
+    border-top:1px solid var(--line);
+    border-radius:22px 22px 0 0;
+    padding:20px 20px max(20px, env(safe-area-inset-bottom));
+    max-height:78vh; overflow-y:auto;
+    transform:translateY(100%);
+    transition:transform .25s cubic-bezier(.2,.8,.2,1);
+    z-index:81;
+  }
+  .sheet-overlay.open .sheet{transform:translateY(0);}
+  .sheet h2{
+    font-family:'Fraunces', serif; font-weight:500; font-size:20px; margin:0 0 14px;
+  }
+  .sheet textarea, .sheet input{
+    width:100%;
+    background:var(--ink);
+    border:1px solid var(--line);
+    color:var(--cream);
+    font-family:'JetBrains Mono', monospace;
+    font-size:13px;
+    border-radius:10px;
+    padding:12px;
+    margin-bottom:10px;
+    resize:none;
+  }
+  .sheet textarea{min-height:70px;}
+  .sheet .save{
+    background:var(--gold); color:#1a1408; border:none;
+    font-weight:700; text-transform:uppercase; font-size:12px; letter-spacing:.06em;
+    padding:13px; border-radius:10px; width:100%; cursor:pointer;
+  }
+  .fav-item{
+    border-bottom:1px solid var(--line);
+    padding:12px 0;
+    font-size:13px;
+    display:flex; justify-content:space-between; gap:10px;
+  }
+  .fav-item .t{font-family:'Fraunces',serif; font-style:italic; font-size:14px; line-height:1.4;}
+  .fav-item .del{background:none;border:none;color:var(--cream-dim); cursor:pointer; font-size:16px; flex-shrink:0;}
+  .fav-item .del:active{color:#e0173d;}
+  .empty{color:var(--cream-dim); font-size:13px; padding:10px 0;}
+
+  /* PIN overlay */
+  .pin-sheet{ text-align:center; }
+  .pin-sheet input{
+    text-align:center;
+    font-size:22px;
+    letter-spacing:.35em;
+    padding:14px;
+  }
+  .pin-error{
+    color:#e0173d;
+    font-size:12px;
+    min-height:18px;
+    margin:-4px 0 8px;
+  }
+
+  .db-status{
+    position:fixed;
+    top:max(8px, env(safe-area-inset-top));
+    left:50%;
+    transform:translateX(-50%);
+    z-index:90;
+    font-size:10px;
+    letter-spacing:.06em;
+    text-transform:none;
+    padding:6px 14px;
+    border-radius:14px;
+    background:var(--ink-2);
+    border:1px solid var(--line);
+    color:var(--cream-dim);
+    pointer-events:none;
+    transition:opacity .3s;
+    max-width:92vw;
+    width:max-content;
+    text-align:center;
+    white-space:normal;
+    line-height:1.5;
+  }
+  .db-status.ok{ color:#7dcea0; border-color:#7dcea033; }
+  .db-status.err{ color:#e0173d; border-color:#e0173d33; }
+  .db-status.hide{ opacity:0; }
+</style>
+</head>
+<body>
+<div class="db-status" id="dbStatus">подключение к базе…</div>
+<div class="app">
+  <div class="top">
+    <div class="brand">
+      <svg class="spark-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" fill="#ffd166" stroke="#ffd166"/></svg>
+      искра
+    </div>
+    <div style="display:flex; gap:2px;">
+      <button class="iconbtn" id="favsBtn" aria-label="Избранное">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-7-4.6-9.5-9C.7 8 2 4.5 5.4 3.8 7.6 3.3 10 4.3 12 7c2-2.7 4.4-3.7 6.6-3.2C22 4.5 23.3 8 21.5 12c-2.5 4.4-9.5 9-9.5 9z"/></svg>
+      </button>
+      <button class="iconbtn" id="addBtn" aria-label="Добавить свой афоризм">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="deck-wrap" id="deckWrap"></div>
+
+  <div class="dots" id="dots"></div>
+  <div class="hint">свайп или тап по краям — следующая карта</div>
+
+  <div class="controls">
+    <button class="ctrl" id="shuffleBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+      Перемешать
+    </button>
+  </div>
+</div>
+
+<div class="sheet-overlay" id="addOverlay">
+  <div class="sheet">
+    <h2>Своя искра</h2>
+    <textarea id="newText" placeholder="Текст афоризма..."></textarea>
+    <input id="newAuthor" placeholder="Автор (необязательно)">
+    <button class="save" id="saveNew">Добавить в колоду</button>
+  </div>
+</div>
+
+<div class="sheet-overlay" id="favsOverlay">
+  <div class="sheet">
+    <h2>Избранное</h2>
+    <div id="favsList"></div>
+  </div>
+</div>
+
+<div class="sheet-overlay" id="pinOverlay">
+  <div class="sheet pin-sheet">
+    <h2>Код владельца</h2>
+    <input id="pinInput" type="password" inputmode="numeric" maxlength="8" placeholder="PIN" autocomplete="off">
+    <div class="pin-error" id="pinError"></div>
+    <button class="save" id="pinSubmit">Войти</button>
+  </div>
+</div>
+
+<script>
+const DEFAULT_QUOTES = [
+  {t:"Дисциплина — это выбор между тем, чего ты хочешь сейчас, и тем, чего хочешь больше всего.", a:"", tag:"дисциплина"},
+  {t:"Не жди вдохновения. Оно приходит во время работы.", a:"Григорий Горин", tag:"действие"},
+  {t:"Тот, кто двигается медленно, но не останавливается, обгонит бегущего рывками.", a:"", tag:"упорство"},
+  {t:"Начни делать то, что нужно. Потом делай то, что возможно. И вдруг ты обнаружишь, что делаешь невозможное.", a:"Франциск Ассизский", tag:"действие"},
+  {t:"Страх — это всего лишь плохо запомненная информация.", a:"", tag:"смелость"},
+  {t:"Куй железо, пока горячо, но не забывай, что кузнец сам решает, когда зажечь горн.", a:"", tag:"инициатива"},
+  {t:"Сила не в том, чтобы никогда не падать, а в том, чтобы вставать каждый раз.", a:"", tag:"упорство"},
+  {t:"Лучше сделать и пожалеть, чем не сделать и жалеть всю жизнь.", a:"", tag:"смелость"},
+  {t:"Хочешь узнать человека — дай ему власть.", a:"Авраам Линкольн", tag:"мудрость"},
+  {t:"Кто не рискует, тот не пьёт шампанского.", a:"", tag:"смелость"},
+  {t:"Единственный способ сделать великую работу — любить то, что делаешь.", a:"", tag:"дело"},
+  {t:"Не важно, как медленно ты идёшь, пока ты не останавливаешься.", a:"Конфуций", tag:"упорство"},
+  {t:"Каждое утро у тебя два выбора: продолжить спать с мечтами или проснуться и воплотить их.", a:"", tag:"действие"},
+  {t:"Трудности делают нас не слабее, а честнее — с собой.", a:"", tag:"мудрость"},
+  {t:"Тот, кто имеет зачем жить, может вынести почти любое как.", a:"Фридрих Ницше", tag:"смысл"},
+  {t:"Не бойся идти медленно, бойся стоять на месте.", a:"Китайская пословица", tag:"упорство"},
+  {t:"Величайшая слава не в том, чтобы никогда не падать, а в том, чтобы подниматься каждый раз после падения.", a:"Конфуций", tag:"упорство"},
+  {t:"Дорогу осилит идущий.", a:"", tag:"действие"},
+  {t:"Всё, что ты можешь представить, — реально.", a:"Пабло Пикассо", tag:"воображение"},
+  {t:"Действие может не всегда приносить счастье, но нет счастья без действия.", a:"Уильям Джеймс", tag:"действие"},
+  {t:"Сначала они тебя не замечают, потом смеются над тобой, потом борются с тобой, потом ты побеждаешь.", a:"", tag:"упорство"},
+  {t:"Не сравнивай свою главу пятую с чужой главой двадцатой.", a:"", tag:"путь"},
+  {t:"Тишина внутри — единственное место, где рождаются решения.", a:"", tag:"фокус"},
+  {t:"Ты не обязан быть великим, чтобы начать, но обязан начать, чтобы стать великим.", a:"Зиг Зиглар", tag:"действие"},
+  {t:"Спокойствие — это суперсила.", a:"", tag:"фокус"},
+  {t:"Маленькие ежедневные улучшения со временем дают ошеломляющие результаты.", a:"", tag:"дисциплина"},
+  {t:"Тот, кто побеждает других, силён. Тот, кто побеждает себя, — могуществен.", a:"Лао-цзы", tag:"мудрость"},
+  {t:"Единственная невозможная мечта — та, за которую ты не взялся.", a:"", tag:"смелость"},
+  {t:"Не жди подходящего момента. Создавай его.", a:"", tag:"инициатива"},
+  {t:"Река прорезала каньон не силой, а упорством.", a:"Джим Уотсон", tag:"упорство"},
+  {t:"Судьба любит смелых.", a:"Вергилий", tag:"смелость"},
+  {t:"Ты никогда не будешь готов на сто процентов. Начни на семидесяти.", a:"", tag:"действие"},
+  {t:"Хорошие вещи приходят к тем, кто ждёт. Лучшие — к тем, кто действует.", a:"", tag:"действие"},
+  {t:"Твой единственный конкурент — вчерашний ты.", a:"", tag:"путь"},
+  {t:"Из всех вещей, что могут случиться, произойдёт та, к которой ты готов.", a:"", tag:"дисциплина"},
+  {t:"Иногда нужно потеряться, чтобы найти себя по-настоящему.", a:"", tag:"путь"},
+  {t:"Огонь испытывает золото, а несчастье — сильных людей.", a:"Сенека", tag:"стойкость"},
+  {t:"Ты сильнее, чем думаешь, и способнее, чем веришь.", a:"", tag:"вера в себя"},
+  {t:"Не считай дни — сделай так, чтобы дни считались.", a:"Мохаммед Али", tag:"смысл"},
+  {t:"Прыгай — сетка появится по пути вниз.", a:"", tag:"смелость"}
+];
+
+const STORAGE_FAVS = "spark:favorites";
+const API = "/api/spark";
+
+// PIN для UI (должен совпадать с OWNER_PIN в Netlify → Site settings → Environment variables)
+const OWNER_PIN = "1234";
+
+let deck = [];
+let customQuotes = [];
+let favorites = [];
+let ownerVerified = false;
+let ownerPinCode = null;
+let pendingOwnerAction = null;
+let idx = 0;
+let dragStartX = null;
+let dragCurrentX = 0;
+let isDragging = false;
+
+const deckWrap = document.getElementById('deckWrap');
+const dotsEl = document.getElementById('dots');
+const dbStatus = document.getElementById('dbStatus');
+
+function setDbStatus(text, type){
+  dbStatus.textContent = text;
+  dbStatus.className = 'db-status' + (type ? ' '+type : '');
+}
+
+function qKey(q){ return q.t + "|" + (q.a||""); }
+function genId(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+const pinOverlay = document.getElementById('pinOverlay');
+const pinInput = document.getElementById('pinInput');
+const pinError = document.getElementById('pinError');
+
+function requireOwner(action){
+  if(ownerVerified){ action(); return; }
+  pendingOwnerAction = action;
+  pinError.textContent = "";
+  pinInput.value = "";
+  pinOverlay.classList.add('open');
+  setTimeout(()=> pinInput.focus(), 200);
+}
+
+function closePinOverlay(){
+  pinOverlay.classList.remove('open');
+  pendingOwnerAction = null;
+}
+
+function submitPin(){
+  if(pinInput.value === OWNER_PIN){
+    ownerVerified = true;
+    ownerPinCode = pinInput.value;
+    pinOverlay.classList.remove('open');
+    renderDeck();
+    if(pendingOwnerAction){
+      const fn = pendingOwnerAction;
+      pendingOwnerAction = null;
+      fn();
+    }
+  } else {
+    pinError.textContent = "Неверный код";
+    pinInput.value = "";
+    pinInput.focus();
+  }
+}
+
+pinOverlay.addEventListener('click', (e)=>{ if(e.target===pinOverlay) closePinOverlay(); });
+document.getElementById('pinSubmit').addEventListener('click', submitPin);
+pinInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') submitPin(); });
+
+// ── База данных (Netlify Blobs через /api/spark) ──────────────────
+// Карточки хранятся на сервере Netlify — навсегда, для всех посетителей.
+
+function mergeCustomFromDb(newCustom){
+  const newIds = new Set(newCustom.map(q => q.id));
+  deck = deck.filter(q => !q.custom || newIds.has(q.id));
+  const inDeck = new Set(deck.filter(q => q.custom).map(q => q.id));
+  for(const q of newCustom){
+    if(!inDeck.has(q.id)) deck.push(q);
+  }
+  customQuotes = newCustom;
+  if(idx >= deck.length) idx = Math.max(0, deck.length - 1);
+  renderDeck();
+}
+
+async function apiRequest(method, body){
+  const opts = {
+    method,
+    headers: { "Content-Type": "application/json" },
+  };
+  if(ownerPinCode) opts.headers["X-Owner-Pin"] = ownerPinCode;
+  if(body) opts.body = JSON.stringify(body);
+  let res;
+  try{
+    res = await fetch(API, opts);
+  }catch(networkErr){
+    throw new Error("нет сети / сайт недоступен (" + networkErr.message + ")");
+  }
+  const raw = await res.text();
+  let data = {};
+  try{ data = raw ? JSON.parse(raw) : {}; }catch(parseErr){ /* ответ не JSON — почти всегда значит, что /api/spark не найден (404) и вернулась HTML-страница */ }
+  if(!res.ok){
+    if(!data.error){
+      throw new Error("HTTP " + res.status + (res.status===404 ? " — функция /api/spark не найдена, проверь деплой" : ""));
+    }
+    throw new Error("HTTP " + res.status + ": " + data.error);
+  }
+  return data;
+}
+
+async function loadQuotesFromApi(silent){
+  const quotes = await apiRequest("GET");
+  mergeCustomFromDb(Array.isArray(quotes) ? quotes : []);
+  if(!silent){
+    setDbStatus("база подключена · " + customQuotes.length + " своих", "ok");
+    setTimeout(()=> dbStatus.classList.add('hide'), 2500);
+  }
+}
+
+async function initDatabase(){
+  try{
+    await loadQuotesFromApi(false);
+    setInterval(()=> loadQuotesFromApi(true).catch(()=>{}), 30000);
+    return true;
+  }catch(e){
+    setDbStatus("нет базы — задеploy папку с netlify/functions", "err");
+    return false;
+  }
+}
+
+async function dbAddQuote(quote){
+  await apiRequest("POST", { quote });
+  await loadQuotesFromApi();
+}
+
+async function dbDeleteQuote(id){
+  await apiRequest("DELETE", { id });
+  await loadQuotesFromApi();
+}
+
+// ── Избранное — личное, в localStorage каждого браузера ───────────
+
+function loadFavs(){
+  try{ favorites = JSON.parse(localStorage.getItem(STORAGE_FAVS) || "[]"); }
+  catch(e){ favorites = []; }
+}
+
+function saveFavs(){
+  try{ localStorage.setItem(STORAGE_FAVS, JSON.stringify(favorites)); }
+  catch(e){}
+}
+
+// ── Удаление / добавление карточек ────────────────────────────────
+
+async function deleteCustomQuote(q){
+  try{
+    await dbDeleteQuote(q.id);
+  }catch(e){
+    setDbStatus("не удалось удалить: " + e.message, "err");
+    dbStatus.classList.remove('hide');
+    return;
+  }
+  const k = qKey(q);
+  const fi = favorites.indexOf(k);
+  if(fi >= 0) favorites.splice(fi, 1);
+  saveFavs();
+  // deck обновится автоматически через onValue listener Firebase
+}
+
+function buildDeck(){
+  deck = [...DEFAULT_QUOTES, ...customQuotes];
+  shuffleArray(deck);
+  idx = 0;
+}
+
+function shuffleArray(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+}
+
+const GRADIENTS = [
+  "linear-gradient(150deg, #ffd6e3 0%, #ffe8ef 55%, #ffffff 100%)",
+  "linear-gradient(150deg, #ffcede 0%, #ffe3ec 50%, #ffffff 100%)",
+  "linear-gradient(150deg, #ffdbe6 0%, #fff0f4 60%, #ffffff 100%)",
+  "linear-gradient(150deg, #ffc8dc 0%, #ffe6ee 55%, #ffffff 100%)",
+];
+
+function renderDeck(){
+  deckWrap.innerHTML = "";
+  const visible = [idx, idx+1, idx+2].filter(i=>i<deck.length);
+  visible.reverse().forEach((qi, pos) => {
+    const q = deck[qi];
+    const card = document.createElement('div');
+    const layer = visible.length - 1 - pos; // 0 = front
+    card.className = 'card' + (layer===1?' card-back':'') + (layer===2?' card-back2':'');
+    card.style.background = GRADIENTS[qi % GRADIENTS.length];
+    const isFav = favorites.includes(qKey(q));
+    card.innerHTML = `
+      <div class="tag">${q.tag||'искра'}</div>
+      <div class="quote-text">${escapeHtml(q.t)}</div>
+      <div class="quote-foot">
+        <div class="author">${q.a ? escapeHtml(q.a) : 'без автора'}</div>
+        <div class="foot-actions">
+          ${q.custom && ownerVerified ? `
+          <button class="favbtn delbtn" data-deltoggle aria-label="Удалить карточку" title="Тапни дважды, чтобы удалить">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M4 7h16M9 7V4h6v3M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13M10 11v6M14 11v6"/></svg>
+          </button>` : ''}
+          <button class="favbtn ${isFav?'active':''}" data-favtoggle>
+            <svg viewBox="0 0 24 24" stroke-width="1.8"><path d="M12 21s-7-4.6-9.5-9C.7 8 2 4.5 5.4 3.8 7.6 3.3 10 4.3 12 7c2-2.7 4.4-3.7 6.6-3.2C22 4.5 23.3 8 21.5 12c-2.5 4.4-9.5 9-9.5 9z"/></svg>
+          </button>
+        </div>
+      </div>
+    `;
+    if(layer===0){
+      attachDrag(card);
+      card.querySelector('[data-favtoggle]').addEventListener('click', (e)=>{
+        e.stopPropagation();
+        toggleFav(q);
+      });
+      const delBtn = card.querySelector('[data-deltoggle]');
+      if(delBtn){
+        let confirming = false;
+        let confirmTimer = null;
+        delBtn.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          if(!confirming){
+            confirming = true;
+            delBtn.classList.add('confirm');
+            confirmTimer = setTimeout(()=>{
+              confirming = false;
+              delBtn.classList.remove('confirm');
+            }, 2200);
+          } else {
+            clearTimeout(confirmTimer);
+            requireOwner(()=> deleteCustomQuote(q));
+          }
+        });
+      }
+    }
+    deckWrap.appendChild(card);
+  });
+  renderDots();
+}
+
+function renderDots(){
+  dotsEl.innerHTML = "";
+  const total = Math.min(deck.length, 7);
+  const start = Math.max(0, Math.min(idx - 3, deck.length - total));
+  for(let i=0;i<total;i++){
+    const d = document.createElement('div');
+    d.className = 'dot' + ((start+i)===idx ? ' on' : '');
+    dotsEl.appendChild(d);
+  }
+}
+
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function toggleFav(q){
+  const k = qKey(q);
+  const i = favorites.indexOf(k);
+  if(i>=0) favorites.splice(i,1);
+  else favorites.push(k);
+  saveFavs();
+  renderDeck();
+}
+
+function next(){
+  if(idx < deck.length - 1){ idx++; }
+  else { idx = 0; shuffleArray(deck); }
+  renderDeck();
+}
+function prev(){
+  if(idx > 0){ idx--; renderDeck(); }
+}
+
+function attachDrag(card){
+  const onStart = (x) => { isDragging = true; dragStartX = x; card.style.transition='none'; };
+  const onMove = (x) => {
+    if(!isDragging) return;
+    dragCurrentX = x - dragStartX;
+    card.style.transform = `translateX(${dragCurrentX}px) rotate(${dragCurrentX/20}deg)`;
+  };
+  const onEnd = () => {
+    if(!isDragging) return;
+    isDragging = false;
+    card.style.transition = 'transform .25s ease';
+    if(Math.abs(dragCurrentX) > 90){
+      const dir = dragCurrentX > 0 ? 1 : -1;
+      card.style.transform = `translateX(${dir*600}px) rotate(${dir*30}deg)`;
+      setTimeout(()=>{ dir>0 ? prev_or_next(1) : prev_or_next(-1); }, 180);
+    } else {
+      card.style.transform = 'translateX(0) rotate(0)';
+    }
+    dragCurrentX = 0;
+  };
+  function prev_or_next(dir){
+    if(dir===1) next(); else next(); // both directions advance for simplicity of "energize" flow
+  }
+
+  card.addEventListener('touchstart', e=>onStart(e.touches[0].clientX), {passive:true});
+  card.addEventListener('touchmove', e=>onMove(e.touches[0].clientX), {passive:true});
+  card.addEventListener('touchend', onEnd);
+
+  card.addEventListener('mousedown', e=>onStart(e.clientX));
+  window.addEventListener('mousemove', e=>{ if(isDragging) onMove(e.clientX); });
+  window.addEventListener('mouseup', onEnd);
+
+  card.addEventListener('click', (e)=>{
+    if(Math.abs(dragCurrentX) > 5) return;
+    const rect = card.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    if(x < rect.width * 0.3){ prev(); }
+    else if(x > rect.width * 0.7){ next(); }
+  });
+}
+
+document.getElementById('shuffleBtn').addEventListener('click', ()=>{
+  shuffleArray(deck); idx = 0; renderDeck();
+});
+
+const addOverlay = document.getElementById('addOverlay');
+document.getElementById('addBtn').addEventListener('click', ()=>{
+  requireOwner(()=> addOverlay.classList.add('open'));
+});
+addOverlay.addEventListener('click', (e)=>{ if(e.target===addOverlay) addOverlay.classList.remove('open'); });
+document.getElementById('saveNew').addEventListener('click', ()=>{
+  requireOwner(async ()=>{
+    const text = document.getElementById('newText').value.trim();
+    const author = document.getElementById('newAuthor').value.trim();
+    if(!text) return;
+    const quote = {id: genId(), t:text, a:author, tag:"своё", custom:true};
+    try{
+      await dbAddQuote(quote);
+    }catch(e){
+      setDbStatus("не удалось сохранить: " + e.message, "err");
+      dbStatus.classList.remove('hide');
+      return;
+    }
+    document.getElementById('newText').value='';
+    document.getElementById('newAuthor').value='';
+    addOverlay.classList.remove('open');
+    // deck обновится через Firebase listener
+  });
+});
+
+const favsOverlay = document.getElementById('favsOverlay');
+document.getElementById('favsBtn').addEventListener('click', ()=>{
+  renderFavsList();
+  favsOverlay.classList.add('open');
+});
+favsOverlay.addEventListener('click', (e)=>{ if(e.target===favsOverlay) favsOverlay.classList.remove('open'); });
+
+function renderFavsList(){
+  const list = document.getElementById('favsList');
+  const all = [...DEFAULT_QUOTES, ...customQuotes];
+  const favQuotes = all.filter(q => favorites.includes(qKey(q)));
+  if(favQuotes.length === 0){
+    list.innerHTML = '<div class="empty">Пока пусто. Нажми на сердечко под карточкой, чтобы сохранить её сюда.</div>';
+    return;
+  }
+  list.innerHTML = favQuotes.map(q => `
+    <div class="fav-item">
+      <div>
+        <div class="t">${escapeHtml(q.t)}</div>
+        <div style="color:var(--cream-dim); margin-top:4px;">${q.a ? escapeHtml(q.a) : 'без автора'}</div>
+      </div>
+      ${q.custom && ownerVerified ? `<button class="del" data-fav-del="${q.id}" aria-label="Удалить карточку">✕</button>` : ''}
+    </div>
+  `).join('');
+  list.querySelectorAll('[data-fav-del]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const q = customQuotes.find(c => c.id === btn.getAttribute('data-fav-del'));
+      if(q){
+        requireOwner(async ()=>{
+          await deleteCustomQuote(q);
+          renderFavsList();
+        });
+      }
+    });
+  });
+}
+
+(async function init(){
+  loadFavs();
+  buildDeck();
+  renderDeck();
+  await initDatabase();
+})();
+</script>
+</body>
+</html>
