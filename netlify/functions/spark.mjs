@@ -69,7 +69,12 @@ async function register(body) {
   if (!validPin(pin)) return bad("PIN — от 4 до 8 цифр");
   const key = name.toLowerCase();
   const exists = await db.sql`SELECT 1 FROM users WHERE name_key = ${key}`;
-  if (exists.length) return bad("Такое имя уже занято", 409);
+  // профиль с таким именем уже есть — если PIN совпал, просто входим
+  if (exists.length) {
+    const res = await login(body);
+    if (res.status === 401) return bad("Профиль «" + name + "» уже есть, а PIN не совпал. Введи свой PIN и нажми «Войти»", 409);
+    return res;
+  }
   const salt = randomBytes(16).toString("hex");
   const hash = await hashPin(pin, salt);
   const [user] = await db.sql`
@@ -89,7 +94,7 @@ async function login(body) {
     SELECT id, name, pin_hash, pin_salt, failed_attempts, locked_until
     FROM users WHERE name_key = ${name.toLowerCase()}`;
   const u = rows[0];
-  if (!u) return bad("Пользователь не найден", 404);
+  if (!u) return bad("Профиля «" + name + "» здесь нет. Нажми «Создать»", 404);
   if (u.locked_until && new Date(u.locked_until) > new Date()) {
     return bad("Слишком много попыток. Подожди несколько минут", 429);
   }
