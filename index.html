@@ -126,8 +126,6 @@
     padding:10px 16px 14px 22px;
     background:#00000080;
   }
-  .img-card .author{ color:#ffffffcc; }
-  .img-card .author:empty::before{ content:""; }
   .img-card .favbtn svg{ stroke:#ffffffcc; }
   .img-card .favbtn.active svg{ fill:#ff5d8f; stroke:#ff5d8f; }
 
@@ -150,15 +148,20 @@
   .quote-foot{
     display:flex;
     align-items:flex-end;
-    justify-content:space-between;
+    justify-content:flex-end;
     gap:6px;
   }
-  .author{
-    font-size:12px;
-    color:var(--card-ink-dim);
-    letter-spacing:.02em;
+  .empty-card{
+    justify-content:center; align-items:center; text-align:center; gap:18px; cursor:default;
   }
-  .author::before{content:"— ";}
+  .empty-card .quote-text{ margin:0; font-size:clamp(20px, 5.5vw, 26px); }
+  .empty-card .save{
+    background:var(--card-accent); color:#fff; border:none; font-family:inherit;
+    font-weight:700; text-transform:uppercase; font-size:12px; letter-spacing:.06em;
+    padding:13px 22px; border-radius:10px; cursor:pointer;
+  }
+  .my-list{ text-align:left; margin:4px 0 14px; max-height:40vh; overflow-y:auto; }
+  .my-list .fav-item{ align-items:center; }
 
   .foot-actions{ display:flex; align-items:center; }
 
@@ -364,7 +367,6 @@
     </button>
     <input type="file" id="imgFile" accept="image/*" hidden>
     <textarea id="newText" placeholder="Текст афоризма..."></textarea>
-    <input id="newAuthor" placeholder="Автор (необязательно)">
     <button class="save" id="saveNew">Добавить в колоду</button>
   </div>
 </div>
@@ -393,6 +395,7 @@
     <div id="accountView" style="display:none">
       <h2 id="accountTitle"></h2>
       <div class="sub" id="accountSub"></div>
+      <div class="my-list" id="myList"></div>
       <button class="alt" id="logoutBtn">Выйти</button>
     </div>
   </div>
@@ -453,6 +456,8 @@ let currentUser = null;
 let authToken = null;
 let pendingOwnerAction = null;
 let idx = 0;
+let deckMode = null;
+let sessionLoading = false;
 let dragStartX = null;
 let dragCurrentX = 0;
 let isDragging = false;
@@ -505,11 +510,43 @@ function openLogin(){
   document.getElementById('accountView').style.display = loggedIn ? '' : 'none';
   if(loggedIn){
     document.getElementById('accountTitle').textContent = currentUser.name;
-    document.getElementById('accountSub').textContent =
-      "Своих карточек: " + customQuotes.length + " · в избранном: " + favorites.length;
+    renderAccount();
   }
   pinOverlay.classList.add('open');
   if(!loggedIn) setTimeout(()=> (loginName.value ? pinInput : loginName).focus(), 200);
+}
+
+function renderAccount(){
+  document.getElementById('accountSub').textContent =
+    "Своих карточек: " + customQuotes.length + " · в избранном: " + visibleFavCount();
+  renderQuoteList(document.getElementById('myList'), customQuotes.slice().reverse(), '', renderAccount);
+}
+
+function visibleFavCount(){
+  return deckSource().filter(q => favorites.includes(qKey(q))).length;
+}
+
+// список карточек с кнопкой удаления (для аккаунта и избранного)
+function renderQuoteList(list, quotes, emptyHtml, onChange){
+  if(quotes.length === 0){ list.innerHTML = emptyHtml; return; }
+  list.innerHTML = quotes.map(q => `
+    <div class="fav-item">
+      <div style="display:flex; gap:10px; align-items:center;">
+        ${q.img ? `<img class="fav-thumb" src="/api/images/${encodeURIComponent(q.id)}" alt="">` : ''}
+        ${q.t ? `<div class="t">${escapeHtml(q.t)}</div>` : ''}
+      </div>
+      ${q.custom && currentUser ? `<button class="del" data-q-del="${escapeHtml(q.id)}" aria-label="Удалить карточку" title="Удалить">✕</button>` : ''}
+    </div>
+  `).join('');
+  list.querySelectorAll('[data-q-del]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const q = customQuotes.find(c => c.id === btn.getAttribute('data-q-del'));
+      if(!q) return;
+      if(!confirm("Удалить эту карточку?")) return;
+      await deleteCustomQuote(q);
+      onChange();
+    });
+  });
 }
 
 function requireOwner(action){
@@ -593,7 +630,13 @@ document.getElementById('skipLogin').addEventListener('click', ()=>{
   closePinOverlay();
 });
 
+// вошедший пользователь видит только свои карточки, гость — стандартную колоду
+function deckSource(){ return currentUser ? customQuotes : DEFAULT_QUOTES; }
+
 function mergeCustom(){
+  const mode = currentUser ? 'user' : 'guest';
+  if(mode !== deckMode){ buildDeck(); renderDeck(); return; }
+  if(mode === 'guest'){ renderDeck(); return; }
   const ids = new Set(customQuotes.map(q => q.id));
   deck = deck.filter(q => !q.custom || ids.has(q.id));
   const inDeck = new Set(deck.filter(q => q.custom).map(q => q.id));
@@ -647,10 +690,12 @@ async function deleteCustomQuote(q){
     api("POST", "/api/favorites", { remove: k }).catch(()=>{});
   }
   mergeCustom();
+  setDbStatus("карточка удалена", "ok", true);
 }
 
 function buildDeck(){
-  deck = [...DEFAULT_QUOTES, ...customQuotes];
+  deckMode = currentUser ? 'user' : 'guest';
+  deck = [...deckSource()];
   shuffleArray(deck);
   idx = 0;
 }
@@ -671,6 +716,23 @@ const GRADIENTS = [
 
 function renderDeck(){
   deckWrap.innerHTML = "";
+  if(deck.length === 0){
+    const card = document.createElement('div');
+    card.className = 'card empty-card';
+    card.style.background = GRADIENTS[0];
+    if(sessionLoading){
+      card.innerHTML = `<div class="quote-text">загрузка…</div>`;
+    } else {
+      card.innerHTML = `
+        <div class="quote-text">Здесь пока нет твоих карточек</div>
+        <button class="save" data-empty-add>Добавить первую</button>`;
+      card.querySelector('[data-empty-add]').addEventListener('click', ()=>
+        requireOwner(()=> addOverlay.classList.add('open')));
+    }
+    deckWrap.appendChild(card);
+    renderDots();
+    return;
+  }
   const visible = [idx, idx+1, idx+2].filter(i=>i<deck.length);
   visible.reverse().forEach((qi, pos) => {
     const q = deck[qi];
@@ -683,7 +745,6 @@ function renderDeck(){
       ${q.img ? `<img class="card-img" src="/api/images/${encodeURIComponent(q.id)}" alt="" draggable="false">` : ''}
       ${q.img ? (q.t ? `<div class="img-caption">${escapeHtml(q.t)}</div>` : '') : `<div class="quote-text">${escapeHtml(q.t)}</div>`}
       <div class="quote-foot">
-        <div class="author">${q.a ? escapeHtml(q.a) : (q.img ? '' : 'без автора')}</div>
         <div class="foot-actions">
           ${q.custom && currentUser ? `
           <button class="favbtn delbtn" data-deltoggle aria-label="Удалить карточку" title="Тапни дважды, чтобы удалить">
@@ -710,6 +771,7 @@ function renderDeck(){
           if(!confirming){
             confirming = true;
             delBtn.classList.add('confirm');
+            setDbStatus("нажми ещё раз, чтобы удалить", "", true);
             confirmTimer = setTimeout(()=>{
               confirming = false;
               delBtn.classList.remove('confirm');
@@ -816,16 +878,18 @@ addOverlay.addEventListener('click', (e)=>{ if(e.target===addOverlay) addOverlay
 document.getElementById('saveNew').addEventListener('click', ()=>{
   requireOwner(async ()=>{
     const text = document.getElementById('newText').value.trim();
-    const author = document.getElementById('newAuthor').value.trim();
     if(!text && !pickedImage) return;
     const btn = document.getElementById('saveNew');
     btn.disabled = true;
     try{
       const data = pickedImage
-        ? await uploadImage(pickedImage, text, author)
-        : await api("POST", "/api/quotes", { t: text, a: author });
+        ? await uploadImage(pickedImage, text)
+        : await api("POST", "/api/quotes", { t: text });
       customQuotes.push(data.quote);
       mergeCustom();
+      // показываем только что добавленную карточку
+      const ni = deck.findIndex(q => q.id === data.quote.id);
+      if(ni >= 0){ idx = ni; renderDeck(); }
     }catch(e){
       setDbStatus("не удалось сохранить: " + e.message, "err");
       return;
@@ -833,7 +897,6 @@ document.getElementById('saveNew').addEventListener('click', ()=>{
       btn.disabled = false;
     }
     document.getElementById('newText').value='';
-    document.getElementById('newAuthor').value='';
     clearPickedImage();
     addOverlay.classList.remove('open');
     setDbStatus("сохранено", "ok", true);
@@ -898,8 +961,8 @@ async function prepareImage(file){
   }
 }
 
-async function uploadImage(blob, caption, author){
-  const qs = new URLSearchParams({ t: caption, a: author });
+async function uploadImage(blob, caption){
+  const qs = new URLSearchParams({ t: caption });
   let res;
   try{
     res = await fetch("/api/images?" + qs, {
@@ -923,43 +986,26 @@ favsOverlay.addEventListener('click', (e)=>{ if(e.target===favsOverlay) favsOver
 
 function renderFavsList(){
   const list = document.getElementById('favsList');
-  const all = [...DEFAULT_QUOTES, ...customQuotes];
-  const favQuotes = all.filter(q => favorites.includes(qKey(q)));
-  if(favQuotes.length === 0){
-    list.innerHTML = '<div class="empty">Пока пусто. Нажми на сердечко под карточкой, чтобы сохранить её сюда.</div>';
-    return;
-  }
-  list.innerHTML = favQuotes.map(q => `
-    <div class="fav-item">
-      <div style="display:flex; gap:10px; align-items:center;">
-        ${q.img ? `<img class="fav-thumb" src="/api/images/${encodeURIComponent(q.id)}" alt="">` : ''}
-        <div>
-          ${q.t ? `<div class="t">${escapeHtml(q.t)}</div>` : ''}
-          ${q.a || !q.img ? `<div style="color:var(--cream-dim); margin-top:4px;">${q.a ? escapeHtml(q.a) : 'без автора'}</div>` : ''}
-        </div>
-      </div>
-      ${q.custom && currentUser ? `<button class="del" data-fav-del="${q.id}" aria-label="Удалить карточку">✕</button>` : ''}
-    </div>
-  `).join('');
-  list.querySelectorAll('[data-fav-del]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const q = customQuotes.find(c => c.id === btn.getAttribute('data-fav-del'));
-      if(q){
-        requireOwner(async ()=>{
-          await deleteCustomQuote(q);
-          renderFavsList();
-        });
-      }
-    });
-  });
+  const favQuotes = deckSource().filter(q => favorites.includes(qKey(q)));
+  renderQuoteList(list, favQuotes,
+    '<div class="empty">Пока пусто. Нажми на сердечко под карточкой, чтобы сохранить её сюда.</div>',
+    renderFavsList);
 }
 
 (async function init(){
   dbStatus.classList.add('hide');
   loadFavs();
-  buildDeck();
+  let storedToken = null;
+  try{ storedToken = localStorage.getItem(STORAGE_TOKEN); }catch(e){}
+  if(storedToken){ sessionLoading = true; deck = []; }
+  else buildDeck();
   renderDeck();
   const hasSession = await restoreSession();
+  if(sessionLoading){
+    sessionLoading = false;
+    if(!currentUser){ buildDeck(); }
+    renderDeck();
+  }
   let skipped = false;
   try{ skipped = localStorage.getItem(STORAGE_SKIP) === "1"; }catch(e){}
   if(!hasSession && !skipped) openLogin();
