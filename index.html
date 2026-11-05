@@ -57,25 +57,8 @@
     max-width:440px;
     display:flex;
     align-items:center;
-    justify-content:space-between;
+    justify-content:flex-end;
     padding:4px 4px 14px;
-  }
-  .brand{
-    display:flex; align-items:center; gap:8px;
-    font-family:'JetBrains Mono', monospace;
-    font-size:12px;
-    letter-spacing:.14em;
-    text-transform:uppercase;
-    color:var(--cream-dim);
-  }
-  .spark-icon{
-    width:14px; height:14px;
-    animation:flicker 2.6s ease-in-out infinite;
-  }
-  @keyframes flicker{
-    0%,100%{opacity:1; transform:scale(1) rotate(0deg);}
-    45%{opacity:.6; transform:scale(.85) rotate(-4deg);}
-    55%{opacity:1; transform:scale(1.08) rotate(3deg);}
   }
   .iconbtn{
     background:none; border:none; color:var(--cream-dim);
@@ -115,14 +98,6 @@
   .card-back{ filter:brightness(.7) saturate(.7); transform:scale(.93) translateY(14px); }
   .card-back2{ filter:brightness(.45) saturate(.5); transform:scale(.86) translateY(26px); opacity:.6;}
 
-  .tag{
-    font-size:11px;
-    letter-spacing:.14em;
-    text-transform:uppercase;
-    color:var(--card-accent);
-    opacity:.85;
-  }
-
   .quote-text{
     font-family:'Fraunces', serif;
     font-weight:500;
@@ -131,6 +106,46 @@
     line-height:1.32;
     color:var(--card-ink);
   }
+
+  .quote-text{ margin:auto 0; }
+
+  .img-card{ padding:0; overflow:hidden; justify-content:flex-end; background:#1c1826 !important; }
+  .card-img{
+    position:absolute; inset:0; width:100%; height:100%;
+    object-fit:cover; pointer-events:none; user-select:none;
+  }
+  .img-card .img-caption, .img-card .quote-foot{ position:relative; }
+  .img-card .img-caption{
+    padding:60px 22px 4px;
+    font-family:'Fraunces', serif; font-style:italic; font-weight:500;
+    font-size:clamp(18px, 5vw, 24px); line-height:1.3; color:#fff;
+    text-shadow:0 1px 8px #00000080;
+    background:linear-gradient(to top, #00000080, transparent);
+  }
+  .img-card .quote-foot{
+    padding:10px 16px 14px 22px;
+    background:#00000080;
+  }
+  .img-card .author{ color:#ffffffcc; }
+  .img-card .author:empty::before{ content:""; }
+  .img-card .favbtn svg{ stroke:#ffffffcc; }
+  .img-card .favbtn.active svg{ fill:#ff5d8f; stroke:#ff5d8f; }
+
+  .pick-img{
+    width:100%; background:none; color:var(--cream); border:1px dashed #ffffff44;
+    font-family:inherit; font-size:12px; letter-spacing:.06em; text-transform:uppercase;
+    padding:13px; border-radius:10px; cursor:pointer; margin-bottom:10px;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .pick-img svg{ width:16px; height:16px; }
+  .img-preview{ position:relative; margin-bottom:10px; display:none; }
+  .img-preview.on{ display:block; }
+  .img-preview img{ width:100%; max-height:220px; object-fit:cover; border-radius:12px; display:block; }
+  .img-preview button{
+    position:absolute; top:8px; right:8px; width:30px; height:30px; border-radius:50%;
+    border:none; background:#000000a0; color:#fff; font-size:14px; cursor:pointer;
+  }
+  .fav-thumb{ width:56px; height:56px; object-fit:cover; border-radius:8px; display:block; }
 
   .quote-foot{
     display:flex;
@@ -309,10 +324,6 @@
 <div class="db-status" id="dbStatus">подключение к базе…</div>
 <div class="app">
   <div class="top">
-    <div class="brand">
-      <svg class="spark-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" fill="#ffd166" stroke="#ffd166"/></svg>
-      искра
-    </div>
     <div style="display:flex; gap:2px;">
       <span class="user-chip" id="userChip"></span>
       <button class="iconbtn" id="userBtn" aria-label="Вход">
@@ -343,6 +354,15 @@
 <div class="sheet-overlay" id="addOverlay">
   <div class="sheet">
     <h2>Своя искра</h2>
+    <div class="img-preview" id="imgPreview">
+      <img id="imgPreviewImg" alt="">
+      <button type="button" id="imgClear" aria-label="Убрать картинку">✕</button>
+    </div>
+    <button type="button" class="pick-img" id="pickImg">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>
+      <span id="pickImgLabel">Добавить картинку</span>
+    </button>
+    <input type="file" id="imgFile" accept="image/*" hidden>
     <textarea id="newText" placeholder="Текст афоризма..."></textarea>
     <input id="newAuthor" placeholder="Автор (необязательно)">
     <button class="save" id="saveNew">Добавить в колоду</button>
@@ -447,7 +467,7 @@ function setDbStatus(text, type, autoHide){
   if(autoHide) setTimeout(()=> dbStatus.classList.add('hide'), 2500);
 }
 
-function qKey(q){ return q.t + "|" + (q.a||""); }
+function qKey(q){ return q.img ? "img:" + q.id : q.t + "|" + (q.a||""); }
 
 // ── API ───────────────────────────────────────────────────────────
 
@@ -656,14 +676,14 @@ function renderDeck(){
     const q = deck[qi];
     const card = document.createElement('div');
     const layer = visible.length - 1 - pos; // 0 = front
-    card.className = 'card' + (layer===1?' card-back':'') + (layer===2?' card-back2':'');
+    card.className = 'card' + (q.img?' img-card':'') + (layer===1?' card-back':'') + (layer===2?' card-back2':'');
     card.style.background = GRADIENTS[qi % GRADIENTS.length];
     const isFav = favorites.includes(qKey(q));
     card.innerHTML = `
-      <div class="tag">${q.tag||'искра'}</div>
-      <div class="quote-text">${escapeHtml(q.t)}</div>
+      ${q.img ? `<img class="card-img" src="/api/images/${encodeURIComponent(q.id)}" alt="" draggable="false">` : ''}
+      ${q.img ? (q.t ? `<div class="img-caption">${escapeHtml(q.t)}</div>` : '') : `<div class="quote-text">${escapeHtml(q.t)}</div>`}
       <div class="quote-foot">
-        <div class="author">${q.a ? escapeHtml(q.a) : 'без автора'}</div>
+        <div class="author">${q.a ? escapeHtml(q.a) : (q.img ? '' : 'без автора')}</div>
         <div class="foot-actions">
           ${q.custom && currentUser ? `
           <button class="favbtn delbtn" data-deltoggle aria-label="Удалить карточку" title="Тапни дважды, чтобы удалить">
@@ -797,11 +817,13 @@ document.getElementById('saveNew').addEventListener('click', ()=>{
   requireOwner(async ()=>{
     const text = document.getElementById('newText').value.trim();
     const author = document.getElementById('newAuthor').value.trim();
-    if(!text) return;
+    if(!text && !pickedImage) return;
     const btn = document.getElementById('saveNew');
     btn.disabled = true;
     try{
-      const data = await api("POST", "/api/quotes", { t: text, a: author });
+      const data = pickedImage
+        ? await uploadImage(pickedImage, text, author)
+        : await api("POST", "/api/quotes", { t: text, a: author });
       customQuotes.push(data.quote);
       mergeCustom();
     }catch(e){
@@ -812,10 +834,85 @@ document.getElementById('saveNew').addEventListener('click', ()=>{
     }
     document.getElementById('newText').value='';
     document.getElementById('newAuthor').value='';
+    clearPickedImage();
     addOverlay.classList.remove('open');
     setDbStatus("сохранено", "ok", true);
   });
 });
+
+// ── Картинки-карточки ─────────────────────────────────────────────
+
+let pickedImage = null; // Blob, готовый к загрузке
+const imgFile = document.getElementById('imgFile');
+const imgPreview = document.getElementById('imgPreview');
+const imgPreviewImg = document.getElementById('imgPreviewImg');
+const newTextEl = document.getElementById('newText');
+
+document.getElementById('pickImg').addEventListener('click', ()=> imgFile.click());
+document.getElementById('imgClear').addEventListener('click', clearPickedImage);
+imgFile.addEventListener('change', async ()=>{
+  const file = imgFile.files && imgFile.files[0];
+  imgFile.value = '';
+  if(!file) return;
+  try{
+    pickedImage = await prepareImage(file);
+  }catch(e){
+    setDbStatus("не удалось открыть картинку", "err", true);
+    return;
+  }
+  if(imgPreviewImg.src) URL.revokeObjectURL(imgPreviewImg.src);
+  imgPreviewImg.src = URL.createObjectURL(pickedImage);
+  imgPreview.classList.add('on');
+  document.getElementById('pickImgLabel').textContent = 'Заменить картинку';
+  newTextEl.placeholder = 'Подпись (необязательно)';
+});
+
+function clearPickedImage(){
+  pickedImage = null;
+  if(imgPreviewImg.src) URL.revokeObjectURL(imgPreviewImg.src);
+  imgPreviewImg.removeAttribute('src');
+  imgPreview.classList.remove('on');
+  document.getElementById('pickImgLabel').textContent = 'Добавить картинку';
+  newTextEl.placeholder = 'Текст афоризма...';
+}
+
+// уменьшаем большие фото, чтобы быстро грузились
+async function prepareImage(file){
+  if(file.type === 'image/gif' && file.size < 3.5*1024*1024) return file;
+  const url = URL.createObjectURL(file);
+  try{
+    const img = await new Promise((res, rej)=>{
+      const i = new Image(); i.onload = ()=>res(i); i.onerror = rej; i.src = url;
+    });
+    const MAX = 1600;
+    const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.round(img.naturalWidth * scale), h = Math.round(img.naturalHeight * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85));
+    if(!blob) throw new Error('encode');
+    return blob;
+  }finally{
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function uploadImage(blob, caption, author){
+  const qs = new URLSearchParams({ t: caption, a: author });
+  let res;
+  try{
+    res = await fetch("/api/images?" + qs, {
+      method: "POST",
+      headers: { "Content-Type": blob.type || "image/jpeg", "Authorization": "Bearer " + authToken },
+      body: blob,
+    });
+  }catch(e){ throw new Error("нет сети"); }
+  let data = {};
+  try{ data = await res.json(); }catch(e){}
+  if(!res.ok) throw new Error(data.error || ("ошибка " + res.status));
+  return data;
+}
 
 const favsOverlay = document.getElementById('favsOverlay');
 document.getElementById('favsBtn').addEventListener('click', ()=>{
@@ -834,9 +931,12 @@ function renderFavsList(){
   }
   list.innerHTML = favQuotes.map(q => `
     <div class="fav-item">
-      <div>
-        <div class="t">${escapeHtml(q.t)}</div>
-        <div style="color:var(--cream-dim); margin-top:4px;">${q.a ? escapeHtml(q.a) : 'без автора'}</div>
+      <div style="display:flex; gap:10px; align-items:center;">
+        ${q.img ? `<img class="fav-thumb" src="/api/images/${encodeURIComponent(q.id)}" alt="">` : ''}
+        <div>
+          ${q.t ? `<div class="t">${escapeHtml(q.t)}</div>` : ''}
+          ${q.a || !q.img ? `<div style="color:var(--cream-dim); margin-top:4px;">${q.a ? escapeHtml(q.a) : 'без автора'}</div>` : ''}
+        </div>
       </div>
       ${q.custom && currentUser ? `<button class="del" data-fav-del="${q.id}" aria-label="Удалить карточку">✕</button>` : ''}
     </div>
