@@ -456,7 +456,7 @@ pinOverlay.addEventListener('click', (e)=>{ if(e.target===pinOverlay) closePinOv
 document.getElementById('pinSubmit').addEventListener('click', submitPin);
 pinInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') submitPin(); });
 
-// ── База данных (Netlify Blobs через /api/spark) ──────────────────
+// ── База данных (Netlify Database через /api/spark) ───────────────
 // Карточки хранятся на сервере Netlify — навсегда, для всех посетителей.
 
 function mergeCustomFromDb(newCustom){
@@ -511,7 +511,7 @@ async function initDatabase(){
     setInterval(()=> loadQuotesFromApi(true).catch(()=>{}), 30000);
     return true;
   }catch(e){
-    setDbStatus("нет базы — задеploy папку с netlify/functions", "err");
+    setDbStatus("база недоступна: " + e.message, "err");
     return false;
   }
 }
@@ -552,7 +552,6 @@ async function deleteCustomQuote(q){
   const fi = favorites.indexOf(k);
   if(fi >= 0) favorites.splice(fi, 1);
   saveFavs();
-  // deck обновится автоматически через onValue listener Firebase
 }
 
 function buildDeck(){
@@ -731,7 +730,6 @@ document.getElementById('saveNew').addEventListener('click', ()=>{
     document.getElementById('newText').value='';
     document.getElementById('newAuthor').value='';
     addOverlay.classList.remove('open');
-    // deck обновится через Firebase listener
   });
 });
 
