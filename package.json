@@ -1,0 +1,8 @@
+{
+  "name": "iskra",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@netlify/database": "^2.0.1"
+  }
+}

@@ -260,6 +260,24 @@
     margin:-4px 0 8px;
   }
 
+  .login-sheet .sub{color:var(--cream-dim); font-size:12px; margin:-6px 0 14px; line-height:1.5;}
+  .login-sheet .row{display:flex; gap:8px;}
+  .login-sheet .alt{
+    background:none; color:var(--cream); border:1px solid var(--line);
+    font-weight:500; text-transform:uppercase; font-size:12px; letter-spacing:.06em;
+    padding:13px; border-radius:10px; width:100%; cursor:pointer;
+  }
+  .login-sheet .skip{
+    background:none; border:none; color:var(--cream-dim); font-family:inherit;
+    font-size:11px; margin-top:12px; cursor:pointer; text-decoration:underline; width:100%;
+  }
+  .save:disabled, .alt:disabled{opacity:.5;}
+  .user-chip{
+    font-size:11px; color:var(--gold); max-width:110px; overflow:hidden; text-overflow:ellipsis;
+    white-space:nowrap; align-self:center; padding-right:2px;
+  }
+  .iconbtn.on{color:var(--gold);}
+
   .db-status{
     position:fixed;
     top:max(8px, env(safe-area-inset-top));
@@ -296,6 +314,10 @@
       искра
     </div>
     <div style="display:flex; gap:2px;">
+      <span class="user-chip" id="userChip"></span>
+      <button class="iconbtn" id="userBtn" aria-label="Вход">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
+      </button>
       <button class="iconbtn" id="favsBtn" aria-label="Избранное">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-7-4.6-9.5-9C.7 8 2 4.5 5.4 3.8 7.6 3.3 10 4.3 12 7c2-2.7 4.4-3.7 6.6-3.2C22 4.5 23.3 8 21.5 12c-2.5 4.4-9.5 9-9.5 9z"/></svg>
       </button>
@@ -335,11 +357,24 @@
 </div>
 
 <div class="sheet-overlay" id="pinOverlay">
-  <div class="sheet pin-sheet">
-    <h2>Код владельца</h2>
-    <input id="pinInput" type="password" inputmode="numeric" maxlength="8" placeholder="PIN" autocomplete="off">
-    <div class="pin-error" id="pinError"></div>
-    <button class="save" id="pinSubmit">Войти</button>
+  <div class="sheet pin-sheet login-sheet">
+    <div id="loginForm">
+      <h2>Вход по PIN-коду</h2>
+      <div class="sub">Твои карточки и избранное сохраняются и доступны с любого устройства.</div>
+      <input id="loginName" placeholder="Имя" autocomplete="username" maxlength="40">
+      <input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="PIN" autocomplete="off">
+      <div class="pin-error" id="pinError"></div>
+      <div class="row">
+        <button class="save" id="pinSubmit">Войти</button>
+        <button class="alt" id="registerBtn">Создать</button>
+      </div>
+      <button class="skip" id="skipLogin">продолжить без входа</button>
+    </div>
+    <div id="accountView" style="display:none">
+      <h2 id="accountTitle"></h2>
+      <div class="sub" id="accountSub"></div>
+      <button class="alt" id="logoutBtn">Выйти</button>
+    </div>
   </div>
 </div>
 
@@ -388,16 +423,14 @@ const DEFAULT_QUOTES = [
 ];
 
 const STORAGE_FAVS = "spark:favorites";
-const API = "/api/spark";
-
-// PIN для UI (должен совпадать с OWNER_PIN в Netlify → Site settings → Environment variables)
-const OWNER_PIN = "1234";
+const STORAGE_TOKEN = "spark:token";
+const STORAGE_SKIP = "spark:skipLogin";
 
 let deck = [];
 let customQuotes = [];
 let favorites = [];
-let ownerVerified = false;
-let ownerPinCode = null;
+let currentUser = null;
+let authToken = null;
 let pendingOwnerAction = null;
 let idx = 0;
 let dragStartX = null;
@@ -408,25 +441,61 @@ const deckWrap = document.getElementById('deckWrap');
 const dotsEl = document.getElementById('dots');
 const dbStatus = document.getElementById('dbStatus');
 
-function setDbStatus(text, type){
+function setDbStatus(text, type, autoHide){
   dbStatus.textContent = text;
   dbStatus.className = 'db-status' + (type ? ' '+type : '');
+  if(autoHide) setTimeout(()=> dbStatus.classList.add('hide'), 2500);
 }
 
 function qKey(q){ return q.t + "|" + (q.a||""); }
-function genId(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+// ── API ───────────────────────────────────────────────────────────
+
+async function api(method, path, body){
+  const opts = { method, headers: { "Content-Type": "application/json" } };
+  if(authToken) opts.headers["Authorization"] = "Bearer " + authToken;
+  if(body) opts.body = JSON.stringify(body);
+  let res;
+  try{ res = await fetch(path, opts); }
+  catch(e){ throw new Error("нет сети"); }
+  let data = {};
+  try{ data = await res.json(); }catch(e){}
+  if(!res.ok){
+    const err = new Error(data.error || ("ошибка " + res.status));
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+// ── Вход по PIN ───────────────────────────────────────────────────
 
 const pinOverlay = document.getElementById('pinOverlay');
+const loginName = document.getElementById('loginName');
 const pinInput = document.getElementById('pinInput');
 const pinError = document.getElementById('pinError');
+const pinSubmit = document.getElementById('pinSubmit');
+const registerBtn = document.getElementById('registerBtn');
 
-function requireOwner(action){
-  if(ownerVerified){ action(); return; }
-  pendingOwnerAction = action;
+function openLogin(){
   pinError.textContent = "";
   pinInput.value = "";
+  const loggedIn = !!currentUser;
+  document.getElementById('loginForm').style.display = loggedIn ? 'none' : '';
+  document.getElementById('accountView').style.display = loggedIn ? '' : 'none';
+  if(loggedIn){
+    document.getElementById('accountTitle').textContent = currentUser.name;
+    document.getElementById('accountSub').textContent =
+      "Своих карточек: " + customQuotes.length + " · в избранном: " + favorites.length;
+  }
   pinOverlay.classList.add('open');
-  setTimeout(()=> pinInput.focus(), 200);
+  if(!loggedIn) setTimeout(()=> (loginName.value ? pinInput : loginName).focus(), 200);
+}
+
+function requireOwner(action){
+  if(currentUser){ action(); return; }
+  pendingOwnerAction = action;
+  openLogin();
 }
 
 function closePinOverlay(){
@@ -434,125 +503,130 @@ function closePinOverlay(){
   pendingOwnerAction = null;
 }
 
-function submitPin(){
-  if(pinInput.value === OWNER_PIN){
-    ownerVerified = true;
-    ownerPinCode = pinInput.value;
+function applyUserData(data){
+  currentUser = data.user;
+  const localFavs = favorites.slice();
+  customQuotes = data.quotes || [];
+  favorites = Array.from(new Set([...(data.favorites || []), ...localFavs]));
+  // гостевое избранное переносим в аккаунт
+  const toUpload = localFavs.filter(k => !(data.favorites || []).includes(k));
+  if(toUpload.length) api("POST", "/api/favorites", { add: toUpload }).catch(()=>{});
+  try{ localStorage.removeItem(STORAGE_FAVS); }catch(e){}
+  mergeCustom();
+  renderUser();
+}
+
+async function authenticate(action){
+  const name = loginName.value.trim();
+  const pin = pinInput.value.trim();
+  if(name.length < 2){ pinError.textContent = "Введи имя"; loginName.focus(); return; }
+  if(!/^\d{4,8}$/.test(pin)){ pinError.textContent = "PIN — от 4 до 8 цифр"; pinInput.focus(); return; }
+  pinSubmit.disabled = registerBtn.disabled = true;
+  pinError.textContent = "";
+  try{
+    const data = await api("POST", "/api/auth/" + action, { name, pin });
+    authToken = data.token;
+    try{ localStorage.setItem(STORAGE_TOKEN, authToken); }catch(e){}
+    applyUserData(data);
     pinOverlay.classList.remove('open');
-    renderDeck();
+    setDbStatus((action === "register" ? "аккаунт создан · " : "привет, ") + currentUser.name, "ok", true);
     if(pendingOwnerAction){
       const fn = pendingOwnerAction;
       pendingOwnerAction = null;
       fn();
     }
-  } else {
-    pinError.textContent = "Неверный код";
+  }catch(e){
+    pinError.textContent = e.message;
     pinInput.value = "";
     pinInput.focus();
+  }finally{
+    pinSubmit.disabled = registerBtn.disabled = false;
   }
 }
 
+async function logout(){
+  try{ await api("POST", "/api/auth/logout"); }catch(e){}
+  authToken = null;
+  currentUser = null;
+  customQuotes = [];
+  favorites = [];
+  try{ localStorage.removeItem(STORAGE_TOKEN); }catch(e){}
+  mergeCustom();
+  renderUser();
+  pinOverlay.classList.remove('open');
+}
+
+function renderUser(){
+  document.getElementById('userChip').textContent = currentUser ? currentUser.name : "";
+  document.getElementById('userBtn').classList.toggle('on', !!currentUser);
+}
+
 pinOverlay.addEventListener('click', (e)=>{ if(e.target===pinOverlay) closePinOverlay(); });
-document.getElementById('pinSubmit').addEventListener('click', submitPin);
-pinInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') submitPin(); });
+pinSubmit.addEventListener('click', ()=> authenticate("login"));
+registerBtn.addEventListener('click', ()=> authenticate("register"));
+pinInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') authenticate("login"); });
+loginName.addEventListener('keydown', (e)=>{ if(e.key==='Enter') pinInput.focus(); });
+document.getElementById('logoutBtn').addEventListener('click', logout);
+document.getElementById('userBtn').addEventListener('click', openLogin);
+document.getElementById('skipLogin').addEventListener('click', ()=>{
+  try{ localStorage.setItem(STORAGE_SKIP, "1"); }catch(e){}
+  closePinOverlay();
+});
 
-// ── База данных (Netlify Blobs через /api/spark) ──────────────────
-// Карточки хранятся на сервере Netlify — навсегда, для всех посетителей.
-
-function mergeCustomFromDb(newCustom){
-  const newIds = new Set(newCustom.map(q => q.id));
-  deck = deck.filter(q => !q.custom || newIds.has(q.id));
+function mergeCustom(){
+  const ids = new Set(customQuotes.map(q => q.id));
+  deck = deck.filter(q => !q.custom || ids.has(q.id));
   const inDeck = new Set(deck.filter(q => q.custom).map(q => q.id));
-  for(const q of newCustom){
-    if(!inDeck.has(q.id)) deck.push(q);
-  }
-  customQuotes = newCustom;
+  for(const q of customQuotes){ if(!inDeck.has(q.id)) deck.push(q); }
   if(idx >= deck.length) idx = Math.max(0, deck.length - 1);
   renderDeck();
 }
 
-async function apiRequest(method, body){
-  const opts = {
-    method,
-    headers: { "Content-Type": "application/json" },
-  };
-  if(ownerPinCode) opts.headers["X-Owner-Pin"] = ownerPinCode;
-  if(body) opts.body = JSON.stringify(body);
-  let res;
+async function restoreSession(){
+  try{ authToken = localStorage.getItem(STORAGE_TOKEN); }catch(e){}
+  if(!authToken) return false;
   try{
-    res = await fetch(API, opts);
-  }catch(networkErr){
-    throw new Error("нет сети / сайт недоступен (" + networkErr.message + ")");
-  }
-  const raw = await res.text();
-  let data = {};
-  try{ data = raw ? JSON.parse(raw) : {}; }catch(parseErr){ /* ответ не JSON — почти всегда значит, что /api/spark не найден (404) и вернулась HTML-страница */ }
-  if(!res.ok){
-    if(!data.error){
-      throw new Error("HTTP " + res.status + (res.status===404 ? " — функция /api/spark не найдена, проверь деплой" : ""));
-    }
-    throw new Error("HTTP " + res.status + ": " + data.error);
-  }
-  return data;
-}
-
-async function loadQuotesFromApi(silent){
-  const quotes = await apiRequest("GET");
-  mergeCustomFromDb(Array.isArray(quotes) ? quotes : []);
-  if(!silent){
-    setDbStatus("база подключена · " + customQuotes.length + " своих", "ok");
-    setTimeout(()=> dbStatus.classList.add('hide'), 2500);
-  }
-}
-
-async function initDatabase(){
-  try{
-    await loadQuotesFromApi(false);
-    setInterval(()=> loadQuotesFromApi(true).catch(()=>{}), 30000);
+    applyUserData(await api("GET", "/api/me"));
     return true;
   }catch(e){
-    setDbStatus("нет базы — задеploy папку с netlify/functions", "err");
-    return false;
+    if(e.status === 401){
+      authToken = null;
+      try{ localStorage.removeItem(STORAGE_TOKEN); }catch(e2){}
+      return false;
+    }
+    setDbStatus("не удалось загрузить данные: " + e.message, "err");
+    return true;
   }
 }
 
-async function dbAddQuote(quote){
-  await apiRequest("POST", { quote });
-  await loadQuotesFromApi();
-}
-
-async function dbDeleteQuote(id){
-  await apiRequest("DELETE", { id });
-  await loadQuotesFromApi();
-}
-
-// ── Избранное — личное, в localStorage каждого браузера ───────────
+// ── Избранное: на сервере для вошедших, локально для гостей ───────
 
 function loadFavs(){
   try{ favorites = JSON.parse(localStorage.getItem(STORAGE_FAVS) || "[]"); }
   catch(e){ favorites = []; }
 }
 
-function saveFavs(){
-  try{ localStorage.setItem(STORAGE_FAVS, JSON.stringify(favorites)); }
-  catch(e){}
+function saveLocalFavs(){
+  if(currentUser) return;
+  try{ localStorage.setItem(STORAGE_FAVS, JSON.stringify(favorites)); }catch(e){}
 }
 
 // ── Удаление / добавление карточек ────────────────────────────────
 
 async function deleteCustomQuote(q){
   try{
-    await dbDeleteQuote(q.id);
+    await api("DELETE", "/api/quotes/" + encodeURIComponent(q.id));
   }catch(e){
     setDbStatus("не удалось удалить: " + e.message, "err");
-    dbStatus.classList.remove('hide');
     return;
   }
+  customQuotes = customQuotes.filter(c => c.id !== q.id);
   const k = qKey(q);
-  const fi = favorites.indexOf(k);
-  if(fi >= 0) favorites.splice(fi, 1);
-  saveFavs();
-  // deck обновится автоматически через onValue listener Firebase
+  if(favorites.includes(k)){
+    favorites = favorites.filter(f => f !== k);
+    api("POST", "/api/favorites", { remove: k }).catch(()=>{});
+  }
+  mergeCustom();
 }
 
 function buildDeck(){
@@ -591,7 +665,7 @@ function renderDeck(){
       <div class="quote-foot">
         <div class="author">${q.a ? escapeHtml(q.a) : 'без автора'}</div>
         <div class="foot-actions">
-          ${q.custom && ownerVerified ? `
+          ${q.custom && currentUser ? `
           <button class="favbtn delbtn" data-deltoggle aria-label="Удалить карточку" title="Тапни дважды, чтобы удалить">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M4 7h16M9 7V4h6v3M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13M10 11v6M14 11v6"/></svg>
           </button>` : ''}
@@ -650,10 +724,14 @@ function escapeHtml(s){
 function toggleFav(q){
   const k = qKey(q);
   const i = favorites.indexOf(k);
-  if(i>=0) favorites.splice(i,1);
-  else favorites.push(k);
-  saveFavs();
+  const adding = i < 0;
+  if(adding) favorites.push(k); else favorites.splice(i,1);
+  saveLocalFavs();
   renderDeck();
+  if(currentUser){
+    api("POST", "/api/favorites", adding ? { add: [k] } : { remove: k })
+      .catch(e => setDbStatus("избранное не сохранилось: " + e.message, "err"));
+  }
 }
 
 function next(){
@@ -720,18 +798,22 @@ document.getElementById('saveNew').addEventListener('click', ()=>{
     const text = document.getElementById('newText').value.trim();
     const author = document.getElementById('newAuthor').value.trim();
     if(!text) return;
-    const quote = {id: genId(), t:text, a:author, tag:"своё", custom:true};
+    const btn = document.getElementById('saveNew');
+    btn.disabled = true;
     try{
-      await dbAddQuote(quote);
+      const data = await api("POST", "/api/quotes", { t: text, a: author });
+      customQuotes.push(data.quote);
+      mergeCustom();
     }catch(e){
       setDbStatus("не удалось сохранить: " + e.message, "err");
-      dbStatus.classList.remove('hide');
       return;
+    }finally{
+      btn.disabled = false;
     }
     document.getElementById('newText').value='';
     document.getElementById('newAuthor').value='';
     addOverlay.classList.remove('open');
-    // deck обновится через Firebase listener
+    setDbStatus("сохранено", "ok", true);
   });
 });
 
@@ -756,7 +838,7 @@ function renderFavsList(){
         <div class="t">${escapeHtml(q.t)}</div>
         <div style="color:var(--cream-dim); margin-top:4px;">${q.a ? escapeHtml(q.a) : 'без автора'}</div>
       </div>
-      ${q.custom && ownerVerified ? `<button class="del" data-fav-del="${q.id}" aria-label="Удалить карточку">✕</button>` : ''}
+      ${q.custom && currentUser ? `<button class="del" data-fav-del="${q.id}" aria-label="Удалить карточку">✕</button>` : ''}
     </div>
   `).join('');
   list.querySelectorAll('[data-fav-del]').forEach(btn=>{
@@ -773,10 +855,14 @@ function renderFavsList(){
 }
 
 (async function init(){
+  dbStatus.classList.add('hide');
   loadFavs();
   buildDeck();
   renderDeck();
-  await initDatabase();
+  const hasSession = await restoreSession();
+  let skipped = false;
+  try{ skipped = localStorage.getItem(STORAGE_SKIP) === "1"; }catch(e){}
+  if(!hasSession && !skipped) openLogin();
 })();
 </script>
 </body>
