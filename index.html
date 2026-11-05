@@ -271,6 +271,11 @@
     letter-spacing:.35em;
     padding:14px;
   }
+  .preview-banner{
+    position:fixed; top:0; left:0; right:0; z-index:60;
+    background:var(--ember); color:var(--ink); text-decoration:none;
+    font-size:12px; line-height:1.4; padding:8px 14px; text-align:center;
+  }
   .pin-error{
     color:#e0173d;
     font-size:12px;
@@ -448,6 +453,8 @@ const DEFAULT_QUOTES = [
 const STORAGE_FAVS = "spark:favorites";
 const STORAGE_TOKEN = "spark:token";
 const STORAGE_SKIP = "spark:skipLogin";
+const STORAGE_NAME = "spark:lastName";
+const MAIN_HOST = "iskra12.netlify.app";
 
 let deck = [];
 let customQuotes = [];
@@ -583,7 +590,7 @@ async function authenticate(action){
   try{
     const data = await api("POST", "/api/auth/" + action, { name, pin });
     authToken = data.token;
-    try{ localStorage.setItem(STORAGE_TOKEN, authToken); }catch(e){}
+    try{ localStorage.setItem(STORAGE_TOKEN, authToken); localStorage.setItem(STORAGE_NAME, name); }catch(e){}
     applyUserData(data);
     pinOverlay.classList.remove('open');
     setDbStatus((action === "register" ? "аккаунт создан · " : "привет, ") + currentUser.name, "ok", true);
@@ -994,6 +1001,15 @@ function renderFavsList(){
 
 (async function init(){
   dbStatus.classList.add('hide');
+  try{ loginName.value = localStorage.getItem(STORAGE_NAME) || ""; }catch(e){}
+  // на ссылках предпросмотра своя отдельная база — предупреждаем и ведём на основной сайт
+  if(location.hostname.endsWith(".netlify.app") && location.hostname !== MAIN_HOST){
+    const b = document.createElement('a');
+    b.href = "https://" + MAIN_HOST + "/";
+    b.className = 'preview-banner';
+    b.textContent = "Это тестовая копия: профили и карточки отсюда не попадут на основной сайт. Открыть основной →";
+    document.body.prepend(b);
+  }
   loadFavs();
   let storedToken = null;
   try{ storedToken = localStorage.getItem(STORAGE_TOKEN); }catch(e){}
