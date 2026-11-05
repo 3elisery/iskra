@@ -1,11 +1,15 @@
 import { getDatabase } from "@netlify/database";
+import { getStore } from "@netlify/blobs";
 import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 
 const scryptAsync = promisify(scrypt);
 const db = getDatabase();
+const images = () => getStore("card-images");
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
-export const config = { path: ["/api/auth/:action", "/api/me", "/api/quotes", "/api/quotes/:id", "/api/favorites"] };
+export const config = { path: ["/api/auth/:action", "/api/me", "/api/quotes", "/api/quotes/:id", "/api/favorites", "/api/images", "/api/images/:id"] };
 
 const MAX_ATTEMPTS = 5;
 const LOCK_MINUTES = 5;
@@ -49,11 +53,11 @@ async function currentUser(req) {
 
 async function userPayload(user) {
   const quotes = await db.sql`
-    SELECT id, text AS t, author AS a FROM quotes WHERE user_id = ${user.id} ORDER BY created_at`;
+    SELECT id, text AS t, author AS a, has_image FROM quotes WHERE user_id = ${user.id} ORDER BY created_at`;
   const favs = await db.sql`SELECT quote_key FROM favorites WHERE user_id = ${user.id}`;
   return {
     user: { name: user.name },
-    quotes: quotes.map((q) => ({ ...q, tag: "своё", custom: true })),
+    quotes: quotes.map(({ has_image, ...q }) => ({ ...q, custom: true, ...(has_image ? { img: true } : {}) })),
     favorites: favs.map((f) => f.quote_key),
   };
 }
@@ -112,6 +116,19 @@ export default async (req, context) => {
   const method = req.method;
 
   try {
+    if (path.startsWith("/api/images/") && method === "GET") {
+      const id = String(context.params.id || "");
+      if (!/^[a-f0-9]{16}$/.test(id)) return new Response("Not found", { status: 404 });
+      const res = await images().getWithMetadata(id, { type: "arrayBuffer" });
+      if (!res) return new Response("Not found", { status: 404 });
+      return new Response(res.data, {
+        headers: {
+          "Content-Type": res.metadata?.contentType || "image/jpeg",
+          "Cache-Control": "public, max-age=31536000, immutable",
+        },
+      });
+    }
+
     if (path.startsWith("/api/auth/")) {
       if (method !== "POST") return bad("Method not allowed", 405);
       const action = context.params.action;
@@ -140,12 +157,28 @@ export default async (req, context) => {
       if (!text) return bad("Пустой текст");
       const id = randomBytes(8).toString("hex");
       await db.sql`INSERT INTO quotes (id, user_id, text, author) VALUES (${id}, ${user.id}, ${text}, ${author})`;
-      return json({ quote: { id, t: text, a: author, tag: "своё", custom: true } }, 201);
+      return json({ quote: { id, t: text, a: author, custom: true } }, 201);
+    }
+
+    if (path === "/api/images" && method === "POST") {
+      const type = (req.headers.get("content-type") || "").split(";")[0].trim();
+      if (!IMAGE_TYPES.includes(type)) return bad("Нужна картинка (jpg, png, webp, gif)");
+      const data = await req.arrayBuffer();
+      if (!data.byteLength) return bad("Пустой файл");
+      if (data.byteLength > MAX_IMAGE_BYTES) return bad("Картинка слишком большая");
+      const caption = String(url.searchParams.get("t") || "").trim().slice(0, 600);
+      const author = String(url.searchParams.get("a") || "").trim().slice(0, 100);
+      const id = randomBytes(8).toString("hex");
+      await images().set(id, data, { metadata: { contentType: type } });
+      await db.sql`INSERT INTO quotes (id, user_id, text, author, has_image)
+        VALUES (${id}, ${user.id}, ${caption}, ${author}, true)`;
+      return json({ quote: { id, t: caption, a: author, custom: true, img: true } }, 201);
     }
 
     if (path.startsWith("/api/quotes/") && method === "DELETE") {
       const id = context.params.id;
-      await db.sql`DELETE FROM quotes WHERE id = ${id} AND user_id = ${user.id}`;
+      const del = await db.sql`DELETE FROM quotes WHERE id = ${id} AND user_id = ${user.id} RETURNING has_image`;
+      if (del[0]?.has_image) await images().delete(id);
       return json({ ok: true });
     }
 

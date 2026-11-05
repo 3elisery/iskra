@@ -1,0 +1,1 @@
+ALTER TABLE quotes ADD COLUMN has_image BOOLEAN NOT NULL DEFAULT false;
